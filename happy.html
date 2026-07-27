@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>С Днём Рождения, сестрёнка!</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+        body {
+            background: #1a1025;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Arial', system-ui, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 800px;
+            height: 600px;
+            border-radius: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 0 2px #f9c9d4 inset;
+            background: #1b1b3a;
+            cursor: pointer;
+            touch-action: none;
+        }
+        @media (max-width: 820px) {
+            canvas {
+                width: 96vw;
+                height: 72vw;
+                max-height: 96vh;
+            }
+        }
+        #musicToggle {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 200, 220, 0.3);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 28px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            color: #ffb3c6;
+            box-shadow: 0 4px 15px rgba(255, 100, 150, 0.3);
+        }
+        #musicToggle:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.25);
+            border-color: #ffb3c6;
+            box-shadow: 0 4px 25px rgba(255, 100, 150, 0.5);
+        }
+        @media (max-width: 820px) {
+            #musicToggle {
+                bottom: 20px;
+                right: 20px;
+                width: 50px;
+                height: 50px;
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="birthdayCanvas" width="800" height="600"></canvas>
+    <button id="musicToggle" title="Включить/выключить музыку">🔊</button>
+
+    <script>
+        (function() {
+            const canvas = document.getElementById('birthdayCanvas');
+            const ctx = canvas.getContext('2d');
+            const musicToggle = document.getElementById('musicToggle');
+
+            // ---------- Состояния ----------
+            const STATE = { HEART: 'heart', CAKE: 'cake', EXPLODE: 'explode' };
+            let currentState = STATE.HEART;
+            let animationFrame = null;
+
+            // ---------- МУЗЫКА (ВАШ ФАЙЛ) ----------
+            let audio = null;
+            let isMusicPlaying = false;
+
+            function initMusic() {
+                try {
+                    // ★★★ ВАЖНО: укажите ПРАВИЛЬНОЕ имя файла ★★★
+                    audio = new Audio('IMG_6035.mp3');
+                    audio.loop = true; // зацикливаем
+                    audio.volume = 0.7;
+                    return true;
+                } catch (e) {
+                    console.log('Ошибка загрузки музыки:', e);
+                    return false;
+                }
+            }
+
+            function startMusic() {
+                if (isMusicPlaying) return;
+                if (!audio) {
+                    const success = initMusic();
+                    if (!success) return;
+                }
+                audio.play().then(() => {
+                    isMusicPlaying = true;
+                    musicToggle.textContent = '🔇';
+                }).catch(e => {
+                    console.log('Автовоспроизведение заблокировано. Нажмите кнопку.', e);
+                });
+            }
+
+            function stopMusic() {
+                if (audio) {
+                    audio.pause();
+                    audio.currentTime = 0;
+                }
+                isMusicPlaying = false;
+                musicToggle.textContent = '🔊';
+            }
+
+            function toggleMusic() {
+                if (isMusicPlaying) {
+                    stopMusic();
+                } else {
+                    startMusic();
+                }
+            }
+
+            function autoStartMusic() {
+                if (!isMusicPlaying) {
+                    startMusic();
+                }
+            }
+
+            // ---------- ВСЯ ОСТАЛЬНАЯ ЛОГИКА (сердце, торт, взрыв) ----------
+            const heart = { x: 400, y: 280, size: 60, pulse: 0, pulseSpeed: 0.04 };
+            const cake = { x: 400, y: 420, width: 200, height: 80, candles: [], candleRadius: 12, candleHeight: 40 };
+            const explosion = { hearts: [], textAlpha: 0, textShown: false };
+
+            function heartShape(ctx, x, y, size) {
+                ctx.beginPath();
+                ctx.moveTo(x, y + size * 0.2);
+                ctx.bezierCurveTo(x - size * 0.6, y - size * 0.3, x - size * 0.9, y + size * 0.1, x, y + size * 0.7);
+                ctx.bezierCurveTo(x + size * 0.9, y + size * 0.1, x + size * 0.6, y - size * 0.3, x, y + size * 0.2);
+                ctx.closePath();
+            }
+
+            function drawHeart(ctx, x, y, size, color = '#ff4d6d', glow = true) {
+                if (glow) {
+                    ctx.shadowColor = '#ff1a4f';
+                    ctx.shadowBlur = 30;
+                } else {
+                    ctx.shadowBlur = 0;
+                }
+                ctx.fillStyle = color;
+                heartShape(ctx, x, y, size);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                ctx.beginPath();
+                ctx.arc(x - size * 0.2, y - size * 0.1, size * 0.12, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            function initCandles() {
+                const count = 7;
+                const spacing = cake.width / (count + 1);
+                cake.candles = [];
+                for (let i = 0; i < count; i++) {
+                    const x = cake.x - cake.width / 2 + spacing * (i + 1);
+                    const y = cake.y - cake.height / 2 - cake.candleHeight + 6;
+                    cake.candles.push({
+                        x, y,
+                        lit: true,
+                        radius: cake.candleRadius * (0.7 + Math.random() * 0.4),
+                        height: cake.candleHeight * (0.8 + Math.random() * 0.3),
+                        flamePhase: Math.random() * 100,
+                    });
+                }
+            }
+            initCandles();
+
+            function spawnExplosionHearts() {
+                const heartsArr = [];
+                const colors = ['#ff4d6d', '#ff6b8a', '#ff8aa1', '#ffa8b9', '#ffc2d1', '#ffdae2', '#ff3b5c', '#ff1a4f', '#ff99bb',
+                    '#ffb3c6'
+                ];
+                for (let i = 0; i < 200; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 2 + Math.random() * 9;
+                    const size = 8 + Math.random() * 32;
+                    heartsArr.push({
+                        x: 400 + (Math.random() - 0.5) * 50,
+                        y: 280 + (Math.random() - 0.5) * 50,
+                        vx: Math.cos(angle) * speed * (0.5 + Math.random() * 0.7),
+                        vy: Math.sin(angle) * speed * (0.5 + Math.random() * 0.7) - 2,
+                        size,
+                        alpha: 1,
+                        color: colors[Math.floor(Math.random() * colors.length)],
+                        rotation: Math.random() * Math.PI * 2,
+                        rotSpeed: (Math.random() - 0.5) * 0.1,
+                    });
+                }
+                explosion.hearts = heartsArr;
+                explosion.textAlpha = 0;
+                explosion.textShown = false;
+            }
+
+            function drawDarkBackground() {
+                const grad = ctx.createLinearGradient(0, 0, 0, 600);
+                grad.addColorStop(0, '#1a1025');
+                grad.addColorStop(0.5, '#2a1a3a');
+                grad.addColorStop(1, '#1a0f2a');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, 800, 600);
+                ctx.fillStyle = 'rgba(255,255,240,0.5)';
+                for (let i = 0; i < 70; i++) {
+                    const sx = (i * 37 + 11) % 800,
+                        sy = (i * 53 + 17) % 600;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 0.6 + (i % 4) * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            function drawScene() {
+                ctx.clearRect(0, 0, 800, 600);
+                drawDarkBackground();
+
+                if (currentState === STATE.HEART) {
+                    heart.pulse += heart.pulseSpeed;
+                    const scale = 1 + 0.07 * Math.sin(heart.pulse);
+                    const size = heart.size * scale;
+                    ctx.shadowColor = '#ff4d6d';
+                    ctx.shadowBlur = 60;
+                    drawHeart(ctx, heart.x, heart.y, size, '#ff4d6d', true);
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = 'rgba(255, 220, 230, 0.85)';
+                    ctx.font = 'bold 22px "Segoe UI", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('❤️ нажми на меня ❤️', 400, 540);
+                    return;
+                }
+
+                if (currentState === STATE.CAKE) {
+                    const cx = cake.x,
+                        cy = cake.y;
+                    const w = cake.width,
+                        h = cake.height;
+                    ctx.shadowColor = '#b87c5a';
+                    ctx.shadowBlur = 20;
+                    ctx.fillStyle = '#d49c7a';
+                    ctx.beginPath();
+                    ctx.ellipse(cx, cy - 10, w / 2, 18, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#c28460';
+                    ctx.beginPath();
+                    ctx.ellipse(cx, cy - 15, w / 2.2, 15, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#e8b48c';
+                    ctx.shadowBlur = 10;
+                    ctx.beginPath();
+                    ctx.rect(cx - w / 2, cy - h / 2, w, h - 10);
+                    ctx.fill();
+                    ctx.fillStyle = '#dba07a';
+                    ctx.beginPath();
+                    ctx.rect(cx - w / 2 + 10, cy - h / 2 + 8, w - 20, h - 30);
+                    ctx.fill();
+                    ctx.fillStyle = '#f5cba0';
+                    ctx.shadowBlur = 5;
+                    for (let i = 0; i < 14; i++) {
+                        const gx = cx - w / 2 + 18 + i * 14;
+                        ctx.beginPath();
+                        ctx.ellipse(gx, cy - h / 2 + 6, 8, 5, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.shadowBlur = 0;
+                    for (let c of cake.candles) {
+                        ctx.fillStyle = c.lit ? '#ffd966' : '#f0e6d0';
+                        ctx.shadowColor = c.lit ? '#ffaa33' : '#aaa';
+                        ctx.shadowBlur = c.lit ? 25 : 6;
+                        ctx.beginPath();
+                        ctx.rect(c.x - 5, c.y - c.height + 8, 10, c.height - 8);
+                        ctx.fill();
+                        ctx.fillStyle = '#3a2a1a';
+                        ctx.shadowBlur = 0;
+                        ctx.beginPath();
+                        ctx.rect(c.x - 1.5, c.y - c.height + 4, 3, 6);
+                        ctx.fill();
+                        if (c.lit) {
+                            const phase = c.flamePhase + Date.now() / 300;
+                            const flicker = 2 + Math.sin(phase) * 1.2;
+                            const flicker2 = 1 + Math.cos(phase * 1.7) * 0.8;
+                            ctx.shadowColor = '#ffaa33';
+                            ctx.shadowBlur = 40;
+                            ctx.fillStyle = 'rgba(255, 200, 50, 0.9)';
+                            ctx.beginPath();
+                            ctx.ellipse(c.x, c.y - c.height - 2 + flicker2 * 2, 6 + flicker * 0.7, 12 + flicker * 0.7, 0, 0,
+                                Math.PI * 2);
+                            ctx.fill();
+                            ctx.fillStyle = 'rgba(255, 255, 180, 0.95)';
+                            ctx.beginPath();
+                            ctx.ellipse(c.x - 1, c.y - c.height - 5 + flicker2 * 1.5, 3 + flicker * 0.3, 7 + flicker * 0.3,
+                                0, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.shadowBlur = 0;
+                        }
+                    }
+                    ctx.shadowBlur = 0;
+                    const litCount = cake.candles.filter(c => c.lit).length;
+                    ctx.fillStyle = 'rgba(255, 235, 200, 0.85)';
+                    ctx.font = 'bold 20px "Segoe UI", sans-serif';
+                    ctx.textAlign = 'center';
+                    if (litCount > 0) {
+                        ctx.fillText(`🎂 загадай желание и задуй свечи (осталось ${litCount}) 🎂`, 400, 560);
+                    } else {
+                        ctx.fillStyle = '#ffe484';
+                        ctx.font = 'bold 24px "Segoe UI", sans-serif';
+                        ctx.fillText('🎉 все свечи погасли! нажми на торт 🎉', 400, 560);
+                    }
+                    return;
+                }
+
+                if (currentState === STATE.EXPLODE) {
+                    for (let h of explosion.hearts) {
+                        h.x += h.vx;
+                        h.y += h.vy;
+                        h.vy += 0.07;
+                        h.alpha -= 0.0025;
+                        h.rotation += h.rotSpeed;
+                        h.vx *= 0.993;
+                        h.vy *= 0.993;
+                        if (h.alpha < 0) h.alpha = 0;
+                    }
+                    for (let h of explosion.hearts) {
+                        if (h.alpha <= 0) continue;
+                        ctx.save();
+                        ctx.globalAlpha = h.alpha;
+                        ctx.translate(h.x, h.y);
+                        ctx.rotate(h.rotation);
+                        ctx.scale(0.6, 0.6);
+                        drawHeart(ctx, 0, 0, h.size, h.color, false);
+                        ctx.restore();
+                    }
+                    if (!explosion.textShown) {
+                        explosion.textAlpha += 0.012;
+                        if (explosion.textAlpha > 1) explosion.textAlpha = 1;
+                        if (explosion.textAlpha >= 0.99) explosion.textShown = true;
+                    } else {
+                        explosion.textAlpha = Math.min(1, explosion.textAlpha + 0.002);
+                    }
+                    if (explosion.textAlpha > 0.05) {
+                        const alpha = explosion.textAlpha;
+                        ctx.globalAlpha = alpha;
+                        ctx.shadowColor = 'rgba(255, 200, 220, 0.7)';
+                        ctx.shadowBlur = 40;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'top';
+                        ctx.fillStyle = '#ffd6e0';
+                        ctx.font = 'bold 42px "Segoe UI", "Arial", sans-serif';
+                        ctx.shadowColor = 'rgba(255, 100, 150, 0.6)';
+                        ctx.shadowBlur = 35;
+                        ctx.fillText('🌸 С днём рождения, сестрёнка! 🌸', 400, 18);
+                        ctx.fillStyle = '#f5d6e0';
+                        ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+                        ctx.shadowBlur = 25;
+                        ctx.shadowColor = 'rgba(200, 50, 100, 0.5)';
+                        const lines = [
+                            '💖 Я хочу пожелать тебе всего самого необходимого и нужного тебе,',
+                            'как на этот этап жизни, так и на следующий. 💖', '',
+                            '😊 Улыбайся, занимайся тем, что дарит тебе удовольствие,',
+                            'что помогает тебе быть счастливой. 😊', '',
+                            '🍀 Будь всегда здорова. Будь богата финансово,',
+                            'ведь в остальном — ты итак имеешь всё! 🍀', '',
+                            '✨ Желаю тебе всего наилучшего в ! режиме)',
+                            '(вспоминай факториал 😉) ✨', '',
+                            '🌟 Становись лучше, но не теряй себя,',
+                            'знай, что для меня — ты уже идеальна. 🌟', '',
+                            '❤️ Я люблю тебя и ещё раз с днём рождения! ❤️',
+                        ];
+                        let yPos = 78;
+                        for (let line of lines) {
+                            if (line.includes('Я люблю')) {
+                                ctx.fillStyle = '#ffb3c9';
+                                ctx.font = 'bold 20px "Segoe UI", "Arial", sans-serif';
+                            } else {
+                                ctx.fillStyle = '#f0d0dd';
+                                ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+                            }
+                            ctx.fillText(line, 400, yPos);
+                            yPos += 28;
+                        }
+                        ctx.globalAlpha = 1;
+                        ctx.shadowBlur = 0;
+                    }
+                }
+            }
+
+            function update() {
+                drawScene();
+                animationFrame = requestAnimationFrame(update);
+            }
+
+            function handleCanvasClick(e) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                let clientX, clientY;
+                if (e.touches) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                    e.preventDefault();
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                const mouseX = (clientX - rect.left) * scaleX;
+                const mouseY = (clientY - rect.top) * scaleY;
+
+                if (currentState === STATE.HEART) {
+                    const dx = mouseX - heart.x;
+                    const dy = mouseY - heart.y;
+                    if (Math.sqrt(dx * dx + dy * dy) < heart.size * 0.9) {
+                        currentState = STATE.CAKE;
+                        for (let c of cake.candles) c.lit = true;
+                        cake.y = 410;
+                        autoStartMusic();
+                    }
+                    return;
+                }
+                if (currentState === STATE.CAKE) {
+                    let clickedCandle = false;
+                    for (let c of cake.candles) {
+                        if (!c.lit) continue;
+                        const dx = mouseX - c.x;
+                        const dy = mouseY - (c.y - c.height / 2);
+                        if (Math.sqrt(dx * dx + dy * dy) < 35) {
+                            c.lit = false;
+                            clickedCandle = true;
+                            break;
+                        }
+                    }
+                    const allOut = cake.candles.every(c => !c.lit);
+                    if (allOut) {
+                        const dxCake = mouseX - cake.x;
+                        const dyCake = mouseY - cake.y;
+                        if (Math.sqrt(dxCake * dxCake + dyCake * dyCake) < cake.width / 2 + 30 || clickedCandle) {
+                            currentState = STATE.EXPLODE;
+                            spawnExplosionHearts();
+                            return;
+                        }
+                    }
+                }
+            }
+
+            function startAnimation() {
+                if (animationFrame) cancelAnimationFrame(animationFrame);
+                update();
+            }
+
+            initMusic();
+            canvas.addEventListener('click', handleCanvasClick);
+            canvas.addEventListener('touchstart', handleCanvasClick, { passive: false });
+            musicToggle.addEventListener('click', toggleMusic);
+            startAnimation();
+            window.addEventListener('resize', () => {});
+        })();
+    </script>
+</body>
+</html>
